@@ -3,6 +3,7 @@ pragma solidity 0.8.4;
 import "../utils/Ownable.sol";
 import "../Interfaces/IUniswapV2Router.sol";
 import "../Interfaces/IERC20.sol";
+import "../Interfaces/IWETH.sol";
 
 contract matrEXRouterV2 is Ownable, IUniswapV2Router{
     /**
@@ -35,6 +36,7 @@ contract matrEXRouterV2 is Ownable, IUniswapV2Router{
     */
     uint256 private _charityFee;
     address private _charityAddress;
+    address private _WETH;
     IUniswapV2Router private _uniswapV2Router;
 
     /**
@@ -44,6 +46,7 @@ contract matrEXRouterV2 is Ownable, IUniswapV2Router{
         _uniswapV2Router = IUniswapV2Router(0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D);
         _charityFee = 20;
         _charityAddress = address(0x830be1dba01bfF12C706b967AcDeCd2fDEa48990);
+        _WETH = address(0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2);
     }
 
     /**
@@ -71,15 +74,18 @@ contract matrEXRouterV2 is Ownable, IUniswapV2Router{
     }
     
     /**
-    * @dev Calculates the fee and takes it, transfers the fee to the charity
-    * address and the remains to this contract.
+    * @dev Calculates the fee and takes it, holds the fee in the contract and 
+    * can be sent to charity when someone calls withdraw()
+    * This makes sure:
+    * 1. That the user doesn't spend extra gas for an ERC20 transfer + 
+    * wrap
+    * 2. That funds can be safely transfered to a contract
     * emits feeTakenInETH()
     * @param totalAmount: The total amount of tokens that will be swapped, will
     * be used to calculate how much the fee will be
     */
     function takeFeeETH(uint256 totalAmount) internal returns (uint256){
         uint256 fee = (totalAmount / 10000) * _charityFee;
-        payable(_charityAddress).transfer(fee);
         emit feeTakenInETH(_msgSender(), fee);
         return totalAmount - fee;
     }
@@ -211,6 +217,17 @@ contract matrEXRouterV2 is Ownable, IUniswapV2Router{
     }
     
     /**
+    * @dev Wraps all tokens in the contract and sends them to the charity 
+    * address 
+    * To know why, see takeFeeETH() 
+    */
+    function withdraw() external {
+        uint256 contractBalance = address(this).balance;
+        IWETH(_WETH).deposit{value: contractBalance}();
+        IWETH(_WETH).transfer(_charityAddress, contractBalance);
+    }
+
+    /**
     * @dev Functions that only the owner can call that change the variables
     * in this contract
     */
@@ -224,6 +241,10 @@ contract matrEXRouterV2 is Ownable, IUniswapV2Router{
     
     function setUniswapV2Router(IUniswapV2Router newUniswapV2Router) external onlyOwner {
         _uniswapV2Router = newUniswapV2Router;
+    }
+
+    function setWETH(address newWETH) external onlyOwner {
+        _WETH = newWETH;
     }
     
     /**
@@ -246,6 +267,11 @@ contract matrEXRouterV2 is Ownable, IUniswapV2Router{
     function uniswapV2Router() external view returns (IUniswapV2Router) {
         return _uniswapV2Router;
     }
-}
-    
 
+    /**
+    * @return The current WETH contract that's being used
+    */
+    function WETH() external view returns (address) {
+        return _WETH;
+    }
+}

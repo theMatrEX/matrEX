@@ -3,6 +3,7 @@ pragma solidity 0.8.4;
 import "../utils/Ownable.sol";
 import "../Interfaces/IERC20.sol";
 import "../Interfaces/IUniswapV3Router.sol";
+import "../Interfaces/IWETH.sol";
 import {Path} from "../utils/Path.sol";
 
 contract matrEXRouterV3 is Ownable, IUniswapV3Router{
@@ -35,12 +36,12 @@ contract matrEXRouterV3 is Ownable, IUniswapV3Router{
     * _charityFee: The % that is taken from each swap that gets sent to charity
     * _charityAddress: The address that the charity funds get sent to
     * _uniswapV3Router: Uniswap router that all swaps go through
-    * WETH: The address of the WETH token
+    * _WETH: The address of the WETH token
     */
     uint256 private _charityFee;
     address private _charityAddress;
     IUniswapV3Router private _uniswapV3Router;
-    address private WETH;
+    address private _WETH;
 
     /**
     * @dev Sets the Uniswap router, the charity fee, the charity address and
@@ -50,7 +51,7 @@ contract matrEXRouterV3 is Ownable, IUniswapV3Router{
         _uniswapV3Router = IUniswapV3Router(0xE592427A0AEce92De3Edee1F18E0157C05861564);
         _charityFee = 20;
         _charityAddress = address(0x830be1dba01bfF12C706b967AcDeCd2fDEa48990);
-        WETH = address(0xc778417E063141139Fce010982780140Aa0cD5Ab);
+        _WETH = address(0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2);
     }
 
     /**
@@ -78,15 +79,18 @@ contract matrEXRouterV3 is Ownable, IUniswapV3Router{
     }
 
     /**
-    * @dev Calculates the fee and takes it, transfers the fee to the charity
-    * address and the remains to this contract.
+    * @dev Calculates the fee and takes it, holds the fee in the contract and 
+    * can be sent to charity when someone calls withdraw()
+    * This makes sure:
+    * 1. That the user doesn't spend extra gas for an ERC20 transfer + 
+    * wrap
+    * 2. That funds can be safely transfered to a contract
     * emits feeTakenInETH()
     * @param totalAmount: The total amount of tokens that will be swapped, will
     * be used to calculate how much the fee will be
     */   
     function takeFeeETH(uint256 totalAmount) internal returns (uint256 fee){
         uint256 _feeTaken = (totalAmount / 10000) * _charityFee;
-        payable(_charityAddress).transfer(_feeTaken);
         emit feeTakenInETH(_msgSender(), _feeTaken);
         return totalAmount - _feeTaken;
     }
@@ -98,7 +102,7 @@ contract matrEXRouterV3 is Ownable, IUniswapV3Router{
     */
 
     function exactInputSingle(ExactInputSingleParams calldata params) external virtual override payable returns (uint256){
-        if (params.tokenIn == WETH && msg.value >= params.amountIn){
+        if (params.tokenIn == _WETH && msg.value >= params.amountIn){
             uint256 newValue = takeFeeETH(params.amountIn);
             ExactInputSingleParams memory params_ = params;
             params_.amountIn = newValue;
@@ -114,7 +118,7 @@ contract matrEXRouterV3 is Ownable, IUniswapV3Router{
     
     function exactInput(ExactInputParams calldata params) external virtual override payable returns (uint256){
         (address tokenIn, address tokenOut, uint24 fee) = params.path.decodeFirstPool();
-        if (tokenIn == WETH && msg.value >= params.amountIn){
+        if (tokenIn == _WETH && msg.value >= params.amountIn){
             uint256 newValue = takeFeeETH(params.amountIn);
             ExactInputParams memory params_ = params;
             params_.amountIn = newValue;
@@ -129,7 +133,7 @@ contract matrEXRouterV3 is Ownable, IUniswapV3Router{
     }
     
      function exactOutputSingle(ExactOutputSingleParams calldata params) external virtual payable override returns (uint256){
-        if (params.tokenIn == address(WETH) && msg.value >= params.amountOut){
+        if (params.tokenIn == address(_WETH) && msg.value >= params.amountOut){
             uint256 newValue = takeFeeETH(params.amountOut);
             ExactOutputSingleParams memory params_ = params;
             params_.amountOut = newValue;
@@ -145,7 +149,7 @@ contract matrEXRouterV3 is Ownable, IUniswapV3Router{
     
     function exactOutput(ExactOutputParams calldata params) external virtual override payable returns (uint256){
         (address tokenIn, address tokenOut, uint24 fee) = params.path.decodeFirstPool();
-         if (tokenIn == address(WETH) && msg.value >= params.amountOut){
+         if (tokenIn == address(_WETH) && msg.value >= params.amountOut){
             uint256 newValue = takeFeeETH(params.amountOut);
             ExactOutputParams memory params_ = params;
             params_.amountOut == newValue;
@@ -158,11 +162,22 @@ contract matrEXRouterV3 is Ownable, IUniswapV3Router{
             return _uniswapV3Router.exactOutput(_params);
         }
     } 
+
+    /**
+    * @dev Wraps all tokens in the contract and sends them to the charity 
+    * address 
+    * To know why, see takeFeeETH() 
+    */
+    function withdraw() external {
+        uint256 contractBalance = address(this).balance;
+        IWETH(_WETH).deposit{value: contractBalance}();
+        IWETH(_WETH).transfer(_charityAddress, contractBalance);
+    }
     
     /**
     * @dev Functions that only the owner can call that change the variables
     * in this contract
-    */    
+    */
     function setCharityFee(uint256 newCharityFee) external onlyOwner {
         _charityFee = newCharityFee;
     }
@@ -175,6 +190,10 @@ contract matrEXRouterV3 is Ownable, IUniswapV3Router{
         _uniswapV3Router = newUniswapV3Router;
     }
 
+    function setWETH(address newWETH) external onlyOwner {
+        _WETH = newWETH;
+    }
+    
     /**
     * @return Returns the % fee taken from each swap that goes to charity
     */
@@ -194,5 +213,12 @@ contract matrEXRouterV3 is Ownable, IUniswapV3Router{
     */
     function uniswapV3Router() external view returns (IUniswapV3Router) {
         return _uniswapV3Router;
+    }
+
+    /**
+    * @return The current WETH contract that's being used
+    */
+    function WETH() external view returns (address) {
+        return _WETH;
     }
 }

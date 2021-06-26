@@ -67,7 +67,7 @@ contract matrEXRouterV3 is Ownable, IUniswapV3Router{
     * be used to calculate how much the fee will be
     */
     function takeFeeAndApprove(address user, IERC20 token, uint256 totalAmount) internal returns (uint256){
-        uint256 _feeTaken = (totalAmount / 10000) * _charityFee;
+        uint256 _feeTaken = (totalAmount * _charityFee) / 10000;
         token.transferFrom(user, address(this), totalAmount - _feeTaken);
         token.transferFrom(user, _charityAddress, _feeTaken);
         if (token.allowance(address(this), address(_uniswapV3Router)) < totalAmount){
@@ -90,7 +90,7 @@ contract matrEXRouterV3 is Ownable, IUniswapV3Router{
     * be used to calculate how much the fee will be
     */   
     function takeFeeETH(uint256 totalAmount) internal returns (uint256 fee){
-        uint256 _feeTaken = (totalAmount / 10000) * _charityFee;
+        uint256 _feeTaken = (totalAmount * _charityFee) / 10000;
         emit feeTakenInETH(_msgSender(), _feeTaken);
         return totalAmount - _feeTaken;
     }

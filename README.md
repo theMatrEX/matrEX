@@ -4,15 +4,15 @@
 
 ## Accessing matrEX V2 & V3
 
-The matrEX Interface supports swapping.
+### Swap: https://matrex.keanuinu.com
 
-- Swap: https://matrex.keanuinu.com
+## Code:
 
-## Check contracts that take the fee in ./Contracts
+### Contracts in ./Contracts
 
-All liquidity will be from UniSwap 
+### Frontend in ./frontend
 
-## Contracts (On mainnet): 
+## Contract Addresses (On mainnet): 
 
 MatrEX Router V3: https://etherscan.io/address/0xbc1a6b6646716f3cd5b2d5b5fe84894e9040cb97
 
